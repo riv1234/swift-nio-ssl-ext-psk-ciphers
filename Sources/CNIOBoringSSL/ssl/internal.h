@@ -534,12 +534,15 @@ BSSL_NAMESPACE_BEGIN
 #define SSL_kPSK 0x00000004u
 #define SSL_kGENERIC 0x00000008u
 
+#define SSL_kRSAPSK 0x00000040u
+
 // Bits for |algorithm_auth| (server authentication).
 #define SSL_aRSA 0x00000001u
 #define SSL_aECDSA 0x00000002u
 // SSL_aPSK is set for both PSK and ECDHE_PSK.
 #define SSL_aPSK 0x00000004u
 #define SSL_aGENERIC 0x00000008u
+
 
 #define SSL_aCERT (SSL_aRSA | SSL_aECDSA)
 

@@ -1254,6 +1254,45 @@ class TLSConfigurationTest: XCTestCase {
                                           .TLS_PSK_WITH_AES_256_CBC_SHA]
         try assertHandshakeSucceeded(withClientConfig: clientConfig, andServerConfig: serverConfig)
     }
+
+    func testTLSRSAPSK() throws {
+        // The idea here is that adding PSKs with certificates in TLS 1.3 should NOT cause a failure.
+        // Also note that the usage here of PSKs with TLS 1.3 is not supported by BoringSSL at this point.
+        func pskClientCallback(hint: String) -> PSKClientIdentityResponse {
+            // Evaluate hint and clientIdentity to send back proper  PSK.
+            var psk = NIOSSLSecureBytes()
+            psk.append("hello".utf8)
+            return PSKClientIdentityResponse(key: psk, identity: "world")
+        }
+
+        func pskServerCallback(hint: String, identity: String) -> PSKServerIdentityResponse {
+            // Evaluate hint and clientIdentity to send back proper  PSK.
+            var psk = NIOSSLSecureBytes()
+            psk.append("hello".utf8)
+            return PSKServerIdentityResponse(key: psk)
+        }
+
+        var clientConfig = TLSConfiguration.makeClientConfiguration()
+        clientConfig.certificateVerification = .none
+        clientConfig.trustRoots = .certificates([])
+        clientConfig.minimumTLSVersion = .tlsv13
+        clientConfig.maximumTLSVersion = .tlsv13
+        clientConfig.pskClientCallback = pskClientCallback
+        clientConfig.pskHint = "pskHint"
+        clientConfig.cipherSuiteValues = [.TLS_RSA_PSK_WITH_AES_256_CBC_SHA]
+
+        var serverConfig = TLSConfiguration.makeServerConfiguration(
+            certificateChain: [.certificate(TLSConfigurationTest.cert1)],
+            privateKey: .privateKey(TLSConfigurationTest.key1)
+        )
+        serverConfig.minimumTLSVersion = .tlsv13
+        serverConfig.maximumTLSVersion = .tlsv13
+        serverConfig.certificateVerification = .none
+        serverConfig.pskServerCallback = pskServerCallback
+        serverConfig.pskHint = "pskHint"
+        serverConfig.cipherSuiteValues = [.TLS_RSA_PSK_WITH_AES_256_CBC_SHA]
+        try assertHandshakeSucceeded(withClientConfig: clientConfig, andServerConfig: serverConfig)
+    }
     
     func testTLSPSKFailure() throws {
         // This test ensures that different PSKs used on the client and server fail when passed in.

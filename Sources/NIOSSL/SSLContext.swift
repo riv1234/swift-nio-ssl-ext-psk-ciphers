@@ -178,12 +178,13 @@ private func clientPSKCallback(ssl: OpaquePointer?,
     }
     
     // If set, build out a hint to pass into the client callback.
-    guard let clientHint = hint,
-          let derivedHint = String(validatingUTF8: clientHint) else {
-        return 0
+    var pskHint = "";
+    if let clientHint = hint,
+        let derivedHint = String(validatingUTF8: clientHint) {
+        pskHint = derivedHint
     }
     // Take the hint and pass it down to the callback to get associated PSK from callback
-    guard let pskIdentityCallback = try? clientCallback(derivedHint) else {
+    guard let pskIdentityCallback = try? clientCallback(pskHint) else {
         return 0
     }
     let clientPSK = pskIdentityCallback.key // Key from the callback

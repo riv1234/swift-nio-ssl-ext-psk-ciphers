@@ -234,6 +234,30 @@ static constexpr SSL_CIPHER kCiphers[] = {
      SSL_HANDSHAKE_MAC_DEFAULT,
     },
 
+    // Cipher 94
+    {
+     TLS1_TXT_PSK_WITH_AES_128_CBC_SHA,
+     "TLS_RSA_PSK_WITH_AES_128_CBC_SHA",
+     TLS1_CK_RSA_PSK_WITH_AES_128_CBC_SHA,
+     SSL_kRSAPSK,
+     SSL_aRSA,
+     SSL_AES128,
+     SSL_SHA1,
+     SSL_HANDSHAKE_MAC_DEFAULT,
+    },
+
+    // Cipher 95
+    {
+     TLS1_TXT_RSA_PSK_WITH_AES_256_CBC_SHA,
+     "TLS_RSA_PSK_WITH_AES_256_CBC_SHA",
+     TLS1_CK_RSA_PSK_WITH_AES_256_CBC_SHA,
+     SSL_kRSAPSK,
+     SSL_aRSA,
+     SSL_AES256,
+     SSL_SHA1,
+     SSL_HANDSHAKE_MAC_DEFAULT,
+    },
+
     // GCM ciphersuites from RFC 5288
 
     // Cipher 9C
@@ -254,6 +278,18 @@ static constexpr SSL_CIPHER kCiphers[] = {
      "TLS_RSA_WITH_AES_256_GCM_SHA384",
      TLS1_CK_RSA_WITH_AES_256_GCM_SHA384,
      SSL_kRSA,
+     SSL_aRSA,
+     SSL_AES256GCM,
+     SSL_AEAD,
+     SSL_HANDSHAKE_MAC_SHA384,
+    },
+
+    // Cipher AD
+    {
+     TLS1_TXT_RSA_PSK_WITH_AES_256_GCM_SHA384,
+     "TLS_RSA_PSK_WITH_AES_256_GCM_SHA384",
+     TLS1_CK_RSA_PSK_WITH_AES_256_GCM_SHA384,
+     SSL_kRSAPSK,
      SSL_aRSA,
      SSL_AES256GCM,
      SSL_AEAD,

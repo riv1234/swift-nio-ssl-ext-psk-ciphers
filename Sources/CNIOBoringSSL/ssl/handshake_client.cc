@@ -1359,6 +1359,14 @@ static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
   return ssl_hs_ok;
 }
 
+static void print_byte_array(const char *prefix, uint8_t *byte_array, size_t size){
+    char buffer[size * 2];
+    for(int j = 0; j < size; j++) {
+      sprintf(&buffer[2*j], "%02X", byte_array[j]);
+    }
+    printf("%s: [%s]\n", prefix, buffer);
+}
+
 static_assert(sizeof(size_t) >= sizeof(unsigned),
               "size_t is smaller than unsigned");
 
@@ -1490,6 +1498,80 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
       return ssl_hs_error;
     }
     OPENSSL_memset(pms.data(), 0, pms.size());
+  } else if (alg_k & SSL_kRSAPSK) {
+      if (hs->config->psk_client_callback == NULL) {
+        OPENSSL_PUT_ERROR(SSL, SSL_R_PSK_NO_CLIENT_CB);
+        return ssl_hs_error;
+      }
+
+      char identity[PSK_MAX_IDENTITY_LEN + 1];
+      OPENSSL_memset(identity, 0, sizeof(identity));
+      psk_len = hs->config->psk_client_callback(
+          ssl, hs->peer_psk_identity_hint.get(), identity, sizeof(identity), psk,
+          sizeof(psk));
+      if (psk_len == 0) {
+        OPENSSL_PUT_ERROR(SSL, SSL_R_PSK_IDENTITY_NOT_FOUND);
+        ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
+        return ssl_hs_error;
+      }
+      assert(psk_len <= PSK_MAX_PSK_LEN);
+
+      hs->new_session->psk_identity.reset(OPENSSL_strdup(identity));
+      if (hs->new_session->psk_identity == nullptr) {
+        OPENSSL_PUT_ERROR(SSL, ERR_R_MALLOC_FAILURE);
+        return ssl_hs_error;
+      }
+
+      RSA *rsa = EVP_PKEY_get0_RSA(hs->peer_pubkey.get());
+      if (rsa == NULL) {
+        OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+        return ssl_hs_error;
+      }
+
+      // PMS without PSK will be sent to server
+      Array<uint8_t> pms_to_send;
+      if (!pms_to_send.Init(SSL_MAX_MASTER_KEY_LENGTH)) {
+        return ssl_hs_error;
+      }
+      pms_to_send[0] = hs->client_version >> 8;
+      pms_to_send[1] = hs->client_version & 0xff;
+      if (!RAND_bytes(&pms_to_send[2], SSL_MAX_MASTER_KEY_LENGTH - 2)) {
+        return ssl_hs_error;
+      }
+
+      // PMS with PSK will be taken for local master secret calculation
+      // Two bytes for the size value of version + random and two bytes for the size value of the psk
+      if (!pms.Init(2 + SSL_MAX_MASTER_KEY_LENGTH + 2 + psk_len)) {
+        return ssl_hs_error;
+      }
+      pms[0] = 0;
+      pms[1] = SSL_MAX_MASTER_KEY_LENGTH;
+      OPENSSL_memcpy(&pms[2], pms_to_send.data(), SSL_MAX_MASTER_KEY_LENGTH);
+      pms[SSL_MAX_MASTER_KEY_LENGTH + 2] = psk_len >> 8;
+      pms[SSL_MAX_MASTER_KEY_LENGTH + 3] = psk_len & 0xff;
+      OPENSSL_memcpy(&pms[SSL_MAX_MASTER_KEY_LENGTH + 4], psk, psk_len);
+
+      // Identity
+      CBB child;
+      if (!CBB_add_u16_length_prefixed(&body, &child) ||
+          !CBB_add_bytes(&child, (const uint8_t *)identity,
+                         OPENSSL_strnlen(identity, sizeof(identity)))) {
+        return ssl_hs_error;
+      }
+
+      // Encrypted pms
+      CBB enc_pms;
+      uint8_t *ptr;
+      size_t enc_pms_len;
+      if (!CBB_add_u16_length_prefixed(&body, &enc_pms) ||
+          !CBB_reserve(&enc_pms, &ptr, RSA_size(rsa)) ||
+          !RSA_encrypt(rsa, &enc_pms_len, ptr, RSA_size(rsa), pms_to_send.data(),
+                       pms_to_send.size(), RSA_PKCS1_PADDING) ||
+          !CBB_did_write(&enc_pms, enc_pms_len) ||
+          !CBB_flush(&body)) {
+        return ssl_hs_error;
+      }
+
   } else {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
     OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
@@ -1517,6 +1599,9 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
   if (!ssl_add_message_cbb(ssl, cbb.get())) {
     return ssl_hs_error;
   }
+
+  // Print pms
+  print_byte_array("PMS", pms.data(), pms.size());
 
   hs->new_session->secret_length =
       tls1_generate_master_secret(hs, hs->new_session->secret, pms);
